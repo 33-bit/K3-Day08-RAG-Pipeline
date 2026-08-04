@@ -8,7 +8,10 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
+from src.ui_helpers import format_score, normalise_source_metadata, resolve_response
+
 load_dotenv()
+
 
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -235,7 +238,7 @@ def render_source_panel(sources: list[dict]) -> None:
 
     with st.expander(f"📚 Nguồn tài liệu trích dẫn ({len(sources)} kết quả)"):
         for index, src in enumerate(sources, start=1):
-            metadata = src.get("metadata", {})
+            metadata = normalise_source_metadata(src.get("metadata", {}), f"document-{index}")
             source_file = metadata.get("source") or metadata.get("file_name") or f"Document-{index}"
             doc_type = (metadata.get("doc_type") or metadata.get("type") or "legal").upper()
             score = src.get("score", 0.0)

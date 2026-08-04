@@ -18,6 +18,11 @@ def normalise_source_metadata(metadata: dict, fallback_source: str = "unknown") 
     return {**metadata, "source": source, "doc_type": doc_type, "type": doc_type}
 
 
+def format_score(score: float) -> str:
+    """Format retrieval scores consistently for display in the UI."""
+    return f"{float(score):.4f}"
+
+
 def build_demo_response(query: str) -> dict:
     """Provide a realistic response while the RAG pipeline is unavailable."""
     return {

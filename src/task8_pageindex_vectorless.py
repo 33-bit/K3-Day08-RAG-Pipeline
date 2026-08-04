@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PAGEINDEX_API_KEY = os.getenv("PAGEINDEX_API_KEY", "")
+PAGEINDEX_DOC_ID = os.getenv("PAGEINDEX_DOC_ID", "")
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
 PAGEINDEX_DIR = Path(__file__).parent.parent / "data" / "pageindex"
 
@@ -92,6 +93,53 @@ def upload_documents():
     raise NotImplementedError("Implement upload_documents")
 
 
+def fetch_pageindex_retrieval(query: str) -> dict:
+    """Fetch the raw Cloud response.
+
+    This is the only function that needs replacing when Cloud credentials and
+    the final PageIndex SDK/API contract are available.
+    """
+    if not PAGEINDEX_API_KEY or not PAGEINDEX_DOC_ID:
+        return {}
+
+    raise NotImplementedError(
+        "Configure the PageIndex Cloud SDK call after confirming its live response schema."
+    )
+
+
+def parse_pageindex_retrieval(retrieval: dict, top_k: int) -> list[dict]:
+    """Flatten PageIndex nodes into the retrieval format used across the RAG app."""
+    if top_k <= 0:
+        return []
+
+    results = []
+    for node in retrieval.get("retrieved_nodes", []):
+        node_id = node.get("node_id", "")
+        for group in node.get("relevant_contents", []):
+            if not isinstance(group, list):
+                continue
+            for item in group:
+                content = str(item.get("relevant_content", "")).strip()
+                if not content:
+                    continue
+
+                rank = len(results) + 1
+                results.append(
+                    {
+                        "content": content,
+                        "score": round(1.0 / rank, 6),
+                        "metadata": {
+                            "section": item.get("section_title", ""),
+                            "node_id": node_id,
+                        },
+                        "source": "pageindex",
+                    }
+                )
+                if len(results) == top_k:
+                    return results
+    return results
+
+
 def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
     """
     Vectorless retrieval sử dụng PageIndex (hoặc local document structure fallback khi thiếu API key).
@@ -112,14 +160,14 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
     if not query or not query.strip():
         return []
 
-    # Attempt PageIndex API if API key is provided
-    if PAGEINDEX_API_KEY:
-        try:
-            from pageindex.client import PageIndexClient
-            client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
-            # Try API retrieval if configured
-        except Exception as e:
-            print(f"PageIndex API notice: {e}")
+    # Attempt PageIndex Cloud API first if configured
+    try:
+        retrieval = fetch_pageindex_retrieval(query)
+        parsed = parse_pageindex_retrieval(retrieval, top_k)
+        if parsed:
+            return parsed
+    except (NotImplementedError, Exception):
+        pass
 
     # Fallback to local structural document search (searching header sections)
     results = []
