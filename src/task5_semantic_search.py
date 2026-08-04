@@ -23,6 +23,7 @@ def get_embedding_model():
 
 
 def get_collection():
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     return client.get_collection(name=COLLECTION_NAME)
 
