@@ -1,4 +1,4 @@
-from src.ui_helpers import build_demo_response, normalise_response, resolve_response
+from src.ui_helpers import build_demo_response, format_score, normalise_response, resolve_response
 
 
 def test_normalise_response_keeps_pipeline_answer_sources_and_origin():
@@ -40,3 +40,8 @@ def test_resolve_response_uses_demo_when_generation_is_not_implemented():
 
     assert is_demo is True
     assert response["sources"]
+
+
+def test_format_score_uses_four_decimal_places_for_retrieval_scores():
+    """Would fail if source scores no longer match the UI's 0.0000 format."""
+    assert format_score(0.912345) == "0.9123"
