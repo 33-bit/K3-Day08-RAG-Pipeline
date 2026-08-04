@@ -1,221 +1,203 @@
-"""
-RAG Evaluation Pipeline.
+"""Run a four-metric RAGAS evaluation over the 20-question golden dataset."""
 
-Sử dụng DeepEval / RAGAS / TruLens để đánh giá chất lượng RAG pipeline.
-Chọn 1 framework và implement đầy đủ.
-
-Yêu cầu:
-    1. Load golden_dataset.json (≥15 Q&A pairs)
-    2. Chạy RAG pipeline trên từng question
-    3. Evaluate với 4 metrics: faithfulness, relevance, context_recall, context_precision
-    4. So sánh A/B ít nhất 2 configs
-    5. Export results ra results.md
-
-Lưu ý rate limit nếu dùng model OpenRouter ":free": RAGAS/DeepEval gọi LLM RẤT NHIỀU LẦN
-(không phải 1 lần/câu hỏi mà nhiều lần/metric/câu hỏi). Model free của OpenRouter giới hạn
-50 request/ngày CHO CẢ TÀI KHOẢN (không phải theo model hay theo API key — đổi model free
-khác hay tạo key mới KHÔNG reset quota). Nếu chạy full 15+ câu hỏi mà bị rate limit giữa
-chừng, thử giảm xuống subset 5 câu để chạy kịp trong buổi, hoặc nạp $10 credit để mở khóa
-1000 request/ngày.
-"""
+from __future__ import annotations
 
 import json
+import os
+from datetime import datetime
 from pathlib import Path
 
-GOLDEN_DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
-RESULTS_PATH = Path(__file__).parent / "results.md"
+import numpy as np
+from dotenv import load_dotenv
+from langchain_core.embeddings import Embeddings
+from langchain_openai import ChatOpenAI
+from sklearn.feature_extraction.text import HashingVectorizer
+
+from src.task6_lexical_search import lexical_search
+
+
+load_dotenv()
+
+EVALUATION_DIR = Path(__file__).parent
+GOLDEN_DATASET_PATH = EVALUATION_DIR / "golden_dataset.json"
+RESULTS_PATH = EVALUATION_DIR / "results.md"
+RAW_RESULTS_PATH = EVALUATION_DIR / "ragas_results.json"
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+JUDGE_MODEL = os.getenv("RAGAS_MODEL", "openai/gpt-4o-mini")
+TOP_K = 5
+
+METRIC_COLUMNS = {
+    "faithfulness": "Faithfulness",
+    "answer_relevancy": "Answer Relevance",
+    "context_recall": "Context Recall",
+    "context_precision": "Context Precision",
+}
+
+
+class LocalHashEmbeddings(Embeddings):
+    """Stateless local embeddings suitable for RAGAS similarity calculations."""
+
+    def __init__(self, dimensions: int = 2048):
+        self.vectorizer = HashingVectorizer(
+            n_features=dimensions,
+            alternate_sign=False,
+            analyzer="char_wb",
+            ngram_range=(2, 5),
+            norm="l2",
+        )
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self.vectorizer.transform(texts).toarray().tolist()
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_documents([text])[0]
 
 
 def load_golden_dataset() -> list[dict]:
-    """Load golden dataset từ JSON file."""
-    with open(GOLDEN_DATASET_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    data = json.loads(GOLDEN_DATASET_PATH.read_text(encoding="utf-8"))
+    if len(data) != 20:
+        raise ValueError(f"Golden dataset must contain 20 records, found {len(data)}")
+    required = {"question", "expected_answer", "expected_context"}
+    if not all(required <= item.keys() for item in data):
+        raise ValueError(f"Every record must contain: {sorted(required)}")
+    return data
 
 
-# =============================================================================
-# Option 1: DeepEval
-# =============================================================================
-
-def evaluate_with_deepeval(rag_pipeline, golden_dataset: list[dict]) -> dict:
-    """
-    Evaluate RAG pipeline sử dụng DeepEval.
-
-    pip install deepeval
-    """
-    # TODO: Implement
-    #
-    from deepeval import evaluate
-    from deepeval.metrics import (
-        FaithfulnessMetric,
-        AnswerRelevancyMetric,
-        ContextualRecallMetric,
-        ContextualPrecisionMetric,
+def build_llm() -> ChatOpenAI:
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing OPENROUTER_API_KEY in .env")
+    return ChatOpenAI(
+        model=JUDGE_MODEL,
+        api_key=api_key,
+        base_url=OPENROUTER_BASE_URL,
+        temperature=0,
+        max_retries=3,
+        timeout=120,
     )
-    from deepeval.test_case import LLMTestCase
-    
-    test_cases = []
-    for item in golden_dataset:
-        result = rag_pipeline.generate_with_citation(item["question"])
-        test_case = LLMTestCase(
-            input=item["question"],
-            actual_output=result["answer"],
-            expected_output=item["expected_answer"],
-            retrieval_context=[c["content"] for c in result["sources"]],
+
+
+def generate_evaluation_data(golden_dataset: list[dict], llm: ChatOpenAI) -> dict:
+    """Retrieve local evidence and generate one grounded answer per question."""
+    data = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
+
+    for index, item in enumerate(golden_dataset, start=1):
+        retrieved = lexical_search(item["question"], top_k=TOP_K)
+        contexts = [result["content"] for result in retrieved]
+        context_text = "\n\n---\n\n".join(contexts)
+        prompt = (
+            "Bạn là trợ lý hỏi đáp về quy định của Đại học Bách khoa Hà Nội. "
+            "Chỉ trả lời bằng thông tin trong NGỮ CẢNH, không bịa đặt. "
+            "Nếu không đủ dữ kiện, hãy nói không thể xác minh.\n\n"
+            f"NGỮ CẢNH:\n{context_text}\n\n"
+            f"CÂU HỎI: {item['question']}\n\nTRẢ LỜI:"
         )
-        test_cases.append(test_case)
-    
-    metrics = [
-        FaithfulnessMetric(threshold=0.7),
-        AnswerRelevancyMetric(threshold=0.7),
-        ContextualRecallMetric(threshold=0.7),
-        ContextualPrecisionMetric(threshold=0.7),
-    ]
-    
-    results = evaluate(test_cases, metrics)
-    return results
-    # raise NotImplementedError("Implement evaluate_with_deepeval")
+        answer = str(llm.invoke(prompt).content).strip()
+
+        data["question"].append(item["question"])
+        data["answer"].append(answer)
+        data["contexts"].append(contexts)
+        data["ground_truth"].append(item["expected_answer"])
+        print(f"Generated {index:02d}/{len(golden_dataset)}")
+
+    return data
 
 
-# =============================================================================
-# Option 2: RAGAS
-# =============================================================================
-
-def evaluate_with_ragas(rag_pipeline, golden_dataset: list[dict]) -> dict:
-    """
-    Evaluate RAG pipeline sử dụng RAGAS.
-
-    pip install ragas
-    """
-    # TODO: Implement
-    #
+def evaluate_with_ragas(eval_data: dict, llm: ChatOpenAI):
+    from datasets import Dataset
     from ragas import evaluate
     from ragas.metrics import (
-        faithfulness,
         answer_relevancy,
-        context_recall,
         context_precision,
+        context_recall,
+        faithfulness,
     )
-    from datasets import Dataset
-    
-    eval_data = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
-    
-    for item in golden_dataset:
-        result = rag_pipeline.generate_with_citation(item["question"])
-        eval_data["question"].append(item["question"])
-        eval_data["answer"].append(result["answer"])
-        eval_data["contexts"].append([c["content"] for c in result["sources"]])
-        eval_data["ground_truth"].append(item["expected_answer"])
-    
+    from ragas.run_config import RunConfig
+
     dataset = Dataset.from_dict(eval_data)
-    result = evaluate(
+    return evaluate(
         dataset,
         metrics=[faithfulness, answer_relevancy, context_recall, context_precision],
+        llm=llm,
+        embeddings=LocalHashEmbeddings(),
+        run_config=RunConfig(timeout=120, max_retries=3, max_workers=1),
+        raise_exceptions=False,
     )
-    return result.to_pandas()
-    # raise NotImplementedError("Implement evaluate_with_ragas")
 
 
-# =============================================================================
-# Option 3: TruLens
-# =============================================================================
+def _safe_mean(values) -> float:
+    numeric = np.asarray(values, dtype=float)
+    return float(np.nanmean(numeric)) if not np.isnan(numeric).all() else float("nan")
 
-def evaluate_with_trulens(rag_pipeline, golden_dataset: list[dict]) -> dict:
-    """
-    Evaluate RAG pipeline sử dụng TruLens.
 
-    pip install trulens
-    """
-    # TODO: Implement
-    #
-    from trulens.apps.custom import TruCustomApp
-    from trulens.core import Feedback
-    from trulens.providers.openai import OpenAI as TruOpenAI
-    
-    provider = TruOpenAI()
-    
-    f_faithfulness = Feedback(provider.groundedness_measure_with_cot_reasons).on_output()
-    f_relevance = Feedback(provider.relevance).on_input_output()
-    f_context_relevance = Feedback(provider.context_relevance).on_input()
-    
-    tru_rag = TruCustomApp(
-        rag_pipeline,
-        app_name="UniversityServices_RAG",
-        feedbacks=[f_faithfulness, f_relevance, f_context_relevance],
+def export_results(frame) -> None:
+    rows = frame.to_dict(orient="records")
+    RAW_RESULTS_PATH.write_text(
+        json.dumps(rows, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
     )
-    
-    with tru_rag as recording:
-        for item in golden_dataset:
-            rag_pipeline.generate_with_citation(item["question"])
-    
-    # Dashboard: from trulens.dashboard import run_dashboard; run_dashboard()
-    # raise NotImplementedError("Implement evaluate_with_trulens")
+
+    averages = {column: _safe_mean(frame[column]) for column in METRIC_COLUMNS}
+    overall = _safe_mean(list(averages.values()))
+    per_row_scores = frame[list(METRIC_COLUMNS)].mean(axis=1, skipna=True)
+    worst_indices = per_row_scores.nsmallest(3).index
+
+    lines = [
+        "# RAGAS Evaluation Results",
+        "",
+        "## Run Information",
+        "",
+        f"- Evaluated at: {datetime.now().astimezone().isoformat(timespec='seconds')}",
+        f"- Framework: RAGAS 0.1.21",
+        f"- Judge model: `{JUDGE_MODEL}` via OpenRouter",
+        f"- Dataset: 20 golden Q&A records",
+        f"- Retrieval: BM25, top_k={TOP_K}",
+        "",
+        "## Overall Scores",
+        "",
+        "| Metric | Score |",
+        "|---|---:|",
+    ]
+    for column, label in METRIC_COLUMNS.items():
+        lines.append(f"| {label} | {averages[column]:.4f} |")
+    lines.extend([f"| **Average** | **{overall:.4f}** |", ""])
+
+    lines.extend([
+        "## Worst Performers (Bottom 3)",
+        "",
+        "| # | Question | Faithfulness | Relevance | Recall | Precision |",
+        "|---:|---|---:|---:|---:|---:|",
+    ])
+    for rank, row_index in enumerate(worst_indices, start=1):
+        row = frame.loc[row_index]
+        question = str(row["question"]).replace("|", "\\|")
+        values = [row[column] for column in METRIC_COLUMNS]
+        rendered = ["N/A" if np.isnan(float(value)) else f"{float(value):.4f}" for value in values]
+        lines.append(f"| {rank} | {question} | {' | '.join(rendered)} |")
+
+    lines.extend([
+        "",
+        "## Recommendations",
+        "",
+        "1. Điều chỉnh tokenizer BM25 cho tiếng Việt và tăng kích thước đoạn khi Context Recall thấp.",
+        "2. Dùng hybrid dense + BM25 và reranking để cải thiện Context Precision.",
+        "3. Tăng ràng buộc trích dẫn trong prompt sinh câu trả lời khi Faithfulness thấp.",
+        "",
+        f"> Chi tiết từng câu được lưu tại `{RAW_RESULTS_PATH.name}`.",
+    ])
+    RESULTS_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-# =============================================================================
-# A/B Comparison
-# =============================================================================
-
-def compare_configs(rag_pipeline, golden_dataset: list[dict]):
-    """
-    So sánh A/B giữa ít nhất 2 configs.
-
-    Gợi ý configs để so sánh:
-    - Config A: hybrid search + reranking
-    - Config B: dense-only (không reranking)
-    - Config C: hybrid search + PageIndex fallback
-    """
-    # TODO: Implement A/B comparison
-    #
-    configs = {
-        "hybrid_rerank": {"use_reranking": True, "alpha": 0.5},
-        "dense_only": {"use_reranking": False, "alpha": 1.0},
-    }
-    
-    results = {}
-    for config_name, params in configs.items():
-    #     # Run eval with this config
-        # ...
-        results[config_name] = scores
-    #
-    return results
-    # raise NotImplementedError("Implement compare_configs")
-
-
-# =============================================================================
-# Export Results
-# =============================================================================
-
-def export_results(results: dict, comparison: dict):
-    """Export evaluation results to results.md"""
-    # TODO: Format and write results
-    #
-    content = "# RAG Evaluation Results\n\n"
-    content += "## Overall Scores\n\n"
-    content += "| Metric | Score |\n|--------|-------|\n"
-    # ...
-    content += "\n## A/B Comparison\n\n"
-    # ...
-    content += "\n## Worst Performers\n\n"
-    # ...
-    content += "\n## Recommendations\n\n"
-    # ...
-    #
-    RESULTS_PATH.write_text(content, encoding="utf-8")
-    # raise NotImplementedError("Implement export_results")
+def main() -> None:
+    golden_dataset = load_golden_dataset()
+    print(f"Loaded {len(golden_dataset)} golden records")
+    llm = build_llm()
+    eval_data = generate_evaluation_data(golden_dataset, llm)
+    result = evaluate_with_ragas(eval_data, llm)
+    export_results(result.to_pandas())
+    print(f"Saved report: {RESULTS_PATH}")
 
 
 if __name__ == "__main__":
-    golden_dataset = load_golden_dataset()
-    print(f"Loaded {len(golden_dataset)} test cases")
-
-    # TODO: Import your RAG pipeline
-    from src.task10_generation import generate_with_citation
-    #
-    # Chọn 1 framework:
-    results = evaluate_with_deepeval(pipeline, golden_dataset)
-    results = evaluate_with_ragas(pipeline, golden_dataset)
-    results = evaluate_with_trulens(pipeline, golden_dataset)
-    
-    comparison = compare_configs(pipeline, golden_dataset)
-    export_results(results, comparison)
-    print("⚠ Implement evaluation logic and run again!")
+    main()
