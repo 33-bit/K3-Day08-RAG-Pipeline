@@ -15,10 +15,21 @@ BM25 hoạt động thế nào:
     - k1=1.5 (term saturation), b=0.75 (length normalization)
 """
 
-from pathlib import Path
+import numpy as np
+from rank_bm25 import BM25Okapi
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # TODO: Load corpus từ data/standardized/ hoặc từ vector store
 CORPUS: list[dict] = []  # List of {'content': str, 'metadata': dict}
+
+BM25_K1 = 1.5
+BM25_B = 0.75
+
+
+def _tokenize(text: str) -> list[str]:
+    """Tokenize đơn giản, nhất quán cho cả corpus và query."""
+    return text.lower().split()
 
 
 def build_bm25_index(corpus: list[dict]):
@@ -28,15 +39,8 @@ def build_bm25_index(corpus: list[dict]):
     Args:
         corpus: List of {'content': str, 'metadata': dict}
     """
-    # TODO: Implement BM25 index
-    #
-    # from rank_bm25 import BM25Okapi
-    #
-    # # Tokenize - có thể đơn giản split(), hoặc dùng underthesea cho tiếng Việt
-    # tokenized_corpus = [doc["content"].lower().split() for doc in corpus]
-    # bm25 = BM25Okapi(tokenized_corpus)
-    # return bm25
-    raise NotImplementedError("Implement build_bm25_index")
+    tokenized_corpus = [_tokenize(doc["content"]) for doc in corpus]
+    return BM25Okapi(tokenized_corpus, k1=BM25_K1, b=BM25_B)
 
 
 def lexical_search(query: str, top_k: int = 10) -> list[dict]:
@@ -55,25 +59,49 @@ def lexical_search(query: str, top_k: int = 10) -> list[dict]:
         }
         Sorted by score descending.
     """
-    # TODO: Implement lexical search
-    #
-    # tokenized_query = query.lower().split()
-    # scores = bm25.get_scores(tokenized_query)
-    #
-    # # Get top_k indices
-    # import numpy as np
-    # top_indices = np.argsort(scores)[::-1][:top_k]
-    #
-    # results = []
-    # for idx in top_indices:
-    #     if scores[idx] > 0:
-    #         results.append({
-    #             "content": CORPUS[idx]["content"],
-    #             "score": float(scores[idx]),
-    #             "metadata": CORPUS[idx]["metadata"]
-    #         })
-    # return results
-    raise NotImplementedError("Implement lexical_search")
+    if not CORPUS or top_k <= 0:
+        return []
+
+    bm25 = build_bm25_index(CORPUS)
+    scores = bm25.get_scores(_tokenize(query))
+    return _format_ranked_results(scores, top_k)
+
+
+def tfidf_search(query: str, top_k: int = 10) -> list[dict]:
+    """Tìm kiếm từ khóa bằng TF-IDF và cosine similarity.
+
+    Trả về cùng định dạng với :func:`lexical_search` để hai phương pháp có
+    thể được so sánh trực tiếp trên cùng corpus và truy vấn.
+    """
+    if not CORPUS or top_k <= 0:
+        return []
+
+    vectorizer = TfidfVectorizer(lowercase=True)
+    document_matrix = vectorizer.fit_transform(
+        [doc["content"] for doc in CORPUS]
+    )
+    query_vector = vectorizer.transform([query])
+    scores = cosine_similarity(query_vector, document_matrix).ravel()
+    return _format_ranked_results(scores, top_k)
+
+
+def _format_ranked_results(scores: np.ndarray, top_k: int) -> list[dict]:
+    """Chuyển điểm sparse retrieval thành format kết quả chung."""
+    top_indices = np.argsort(scores)[::-1][:top_k]
+    results = []
+    for index in top_indices:
+        score = float(scores[index])
+        if score <= 0:
+            continue
+        document = CORPUS[index]
+        results.append(
+            {
+                "content": document["content"],
+                "score": score,
+                "metadata": document["metadata"],
+            }
+        )
+    return results
 
 
 if __name__ == "__main__":
