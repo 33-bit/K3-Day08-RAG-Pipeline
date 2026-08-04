@@ -71,9 +71,108 @@ Xem code mẫu (DeepEval/RAGAS/TruLens) chi tiết trong `README.md` gốc mục
 
 ## Kiến Trúc Hệ Thống
 
+### Tổng quan 4 tầng
+
+```mermaid
+flowchart TB
+    subgraph T4G["TẦNG 4 — PRESENTATION · app.py"]
+        UI["Streamlit Chat UI<br/>st.session_state.messages = conversation memory"]
+        SRC["Source Panel — render_source_panel()<br/>src/ui_helpers.py: format_score · normalise_source_metadata · resolve_response"]
+    end
+
+    subgraph T3G["TẦNG 3 — GENERATION · src/task10_generation.py"]
+        RO["reorder_for_llm()<br/>1,2,3,4,5 → 1,3,5,4,2 — chống lost in the middle"]
+        FMT["format_context()<br/>Document i | Source | Type"]
+        LLM["OpenRouter · openai/gpt-4o-mini<br/>temperature=0.3 · top_p=0.9 · top_k=5<br/>SYSTEM_PROMPT: bắt buộc citation, cấm bịa"]
+        OUT["answer + citations + sources[]"]
+        RO --> FMT --> LLM --> OUT
+    end
+
+    subgraph T2G["TẦNG 2 — RETRIEVAL Hybrid · src/task9_retrieval_pipeline.py"]
+        SEM["Task 5 SEMANTIC<br/>ChromaDB cosine · all-MiniLM-L6-v2 · top_k*2"]
+        LEX["Task 6 LEXICAL<br/>BM25Okapi · k1=1.5 · b=0.75 · top_k*2"]
+        MRG["Task 7 MERGE — RRF k=60"]
+        RRK["Task 7 RERANK<br/>Jina reranker-v2-multilingual<br/>fallback → RRF nếu 403 / thiếu key"]
+        GATE{"GATE<br/>dense cosine gốc &lt; 0.48 ?"}
+        HYB["source = hybrid"]
+        PI["Task 8 PAGEINDEX FALLBACK<br/>Vectorless RAG · source = pageindex"]
+        SEM --> MRG
+        LEX --> MRG
+        MRG --> RRK --> GATE
+        SEM -. "raw cosine, KHÔNG dùng RRF" .-> GATE
+        GATE -- No --> HYB
+        GATE -- Yes --> PI
+    end
+
+    subgraph T1G["TẦNG 1 — INGESTION & INDEXING"]
+        I1["Task 1 Legal Docs<br/>PDF/DOCX → data/landing/legal/"]
+        I2["Task 2 News Crawler HUST<br/>requests + BS4 → data/landing/news/*.json"]
+        I3["Task 3 MarkItDown<br/>→ data/standardized/{legal,news}/*.md"]
+        I4["Task 4 CHUNK + INDEX<br/>Recursive splitter · size=500 · overlap=50<br/>Embedding all-MiniLM-L6-v2 384-dim"]
+        CH[("ChromaDB persistent<br/>chroma_db/ · university_services_docs")]
+        BM[("BM25 corpus in-memory")]
+        PIS[("PageIndex.ai<br/>data/pageindex/*.pdf · doc_ids.json")]
+        I1 --> I3
+        I2 --> I3
+        I3 --> I4
+        I4 --> CH
+        I4 --> BM
+    end
+
+    UI -- "query: str" --> RO
+    OUT -- "answer" --> UI
+    OUT -- "sources" --> SRC
+    HYB -- "list[content, score, metadata, source]" --> RO
+    PI -- "list[content, score, metadata, source]" --> RO
+    CH -.-> SEM
+    BM -.-> LEX
+    PIS -.-> PI
 ```
-[Vẽ diagram kiến trúc ở đây]
+
+### Evaluation pipeline (offline)
+
+```mermaid
+flowchart LR
+    GD[("golden_dataset.json<br/>15+ cặp Q&A")] --> EP["eval_pipeline.py<br/>RAGAS"]
+    EP -- "mỗi question" --> RET["retrieve()<br/>Task 9"]
+    RET --> GEN["generate_answer()<br/>Task 10"]
+    GEN --> MET["4 metrics<br/>faithfulness · answer relevance<br/>context recall · context precision"]
+    MET --> AB{"A/B configs"}
+    AB -- "config A" --> CA["rerank ON · threshold 0.48"]
+    AB -- "config B" --> CB["rerank OFF / dense-only"]
+    CA --> RES["results.md<br/>bảng điểm + worst performers"]
+    CB --> RES
+    EP -. "thiếu RAGAS / LLM key" .-> FB["heuristic scorer<br/>vẫn xuất báo cáo"]
+    FB --> RES
 ```
+
+### Bảng thành phần
+
+| Tầng | Module | Công nghệ | Cấu hình chính |
+| ---- | ------ | --------- | -------------- |
+| Ingestion | `task1_collect_legal_docs.py` | urllib | PDF/DOCX từ trang công khai → `data/landing/legal/` |
+| Ingestion | `task2_crawl_news.py` | requests + BeautifulSoup | 5 bài HUST → JSON có metadata |
+| Ingestion | `task3_convert_markdown.py` | MarkItDown `[pdf]` | landing → `data/standardized/` giữ cấu trúc |
+| Indexing | `task4_chunking_indexing.py` | LangChain splitter + SentenceTransformer | `chunk=500`, `overlap=50`, `all-MiniLM-L6-v2` 384-dim |
+| Store | — | ChromaDB PersistentClient | `chroma_db/`, collection `university_services_docs` |
+| Retrieval | `task5_semantic_search.py` | ChromaDB query | `score = 1 - distance`, clamp `[0,1]` |
+| Retrieval | `task6_lexical_search.py` | `rank-bm25` (fallback pure-Python) | BM25Okapi `k1=1.5`, `b=0.75` |
+| Retrieval | `task7_reranking.py` | Jina Reranker API / RRF / MMR | RRF `k=60`, timeout 5s, auto-fallback |
+| Retrieval | `task8_pageindex_vectorless.py` | PageIndex.ai API | Vectorless, chỉ chạy khi gate mở |
+| Orchestration | `task9_retrieval_pipeline.py` | — | `SCORE_THRESHOLD=0.48`, `top_k=5`, `RERANK_METHOD=rrf` |
+| Generation | `task10_generation.py` | OpenRouter (OpenAI SDK) | `gpt-4o-mini`, `T=0.3`, `top_p=0.9`, citation bắt buộc |
+| UI | `app.py` + `src/ui_helpers.py` | Streamlit | chat history qua `st.session_state.messages` |
+| Eval | `group_project/evaluation/` | RAGAS | 4 metrics, A/B configs, fallback heuristic |
+
+### Quyết định thiết kế đáng chú ý
+
+1. **Gate fallback dùng cosine gốc, không dùng RRF.** Điểm RRF sau khi fuse chỉ phụ thuộc *thứ hạng*, top-1 luôn ≈ `1/(60+1)` ≈ `0.0164` bất kể query có liên quan hay không. Nếu so threshold với điểm RRF thì fallback PageIndex không bao giờ trigger. Pipeline giữ riêng `dense_results[0]["score"]` (cosine trước fuse) làm căn cứ quyết định.
+
+2. **Mọi dependency ngoài đều có fallback.** Jina reranker 403 → RRF. `rank-bm25` thiếu → BM25Okapi pure-Python. PageIndex lỗi → trả kết quả hybrid. RAGAS/LLM key thiếu → heuristic scorer. Demo không chết vì một API rớt.
+
+3. **Reorder chống "lost in the middle".** Chunk tốt nhất đặt đầu, tốt nhì đặt cuối, kém nhất dồn vào giữa — nơi LLM chú ý yếu nhất.
+
+4. **Hybrid mặc định, không dense-only.** Truy vấn quy chế đại học có nhiều mã số/thuật ngữ chính xác ("Điều 12", "GPA 2.0") — BM25 bắt tốt hơn embedding; ngược lại câu hỏi diễn giải cần dense. RRF hợp nhất hai thang điểm không cùng đơn vị.
 
 ---
 
