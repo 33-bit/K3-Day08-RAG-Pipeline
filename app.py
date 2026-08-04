@@ -29,37 +29,114 @@ st.markdown(
     """
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-      
+
+      :root {
+          --canvas: #0B1220;
+          --surface: #111C2E;
+          --surface-raised: #18263B;
+          --border: #2A3B55;
+          --text-primary: #F1F5F9;
+          --text-secondary: #B6C4D6;
+          --teal: #2DD4BF;
+          --teal-deep: #0F766E;
+          --amber: #FBBF24;
+          --danger: #FB7185;
+      }
+
       html, body, [class*="css"] {
           font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       }
-      
-      .stApp {
-          background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-          color: #f8fafc;
+
+      .stApp,
+      [data-testid="stAppViewContainer"],
+      [data-testid="stMain"] {
+          background: var(--canvas);
+          color: var(--text-primary);
       }
-      
+
+      [data-testid="stHeader"] {
+          background: var(--canvas) !important;
+          border-bottom: 1px solid var(--border);
+      }
+
+      [data-testid="stToolbar"],
+      [data-testid="stDecoration"] {
+          background: transparent !important;
+      }
+
       .block-container {
           max-width: 1100px;
           padding-top: 1.8rem;
           padding-bottom: 6rem;
       }
-      
-      /* Sidebar styling */
+
       [data-testid="stSidebar"] {
-          background: rgba(15, 23, 42, 0.85);
-          backdrop-filter: blur(12px);
-          border-right: 1px solid rgba(255, 255, 255, 0.1);
-      }
-      
-      [data-testid="stSidebar"] * {
-          color: #e2e8f0 !important;
+          background: #0D1628;
+          border-right: 1px solid var(--border);
       }
 
-      /* Hero Header Banner */
+      [data-testid="stSidebar"] :is(p, label, h1, h2, h3, span) {
+          color: var(--text-secondary);
+      }
+
+      [data-testid="stSidebar"] h1,
+      [data-testid="stSidebar"] h2,
+      [data-testid="stSidebar"] h3,
+      [data-testid="stSidebar"] strong {
+          color: var(--text-primary);
+      }
+
+      [data-testid="stTabs"] [role="tab"] {
+          color: var(--text-secondary);
+          font-weight: 700;
+      }
+
+      [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+          color: var(--teal);
+      }
+
+      [data-testid="stTabs"] [role="tab"]:focus-visible,
+      [data-testid="stButton"] > button:focus-visible,
+      [data-testid="stChatInput"] textarea:focus-visible {
+          outline: 2px solid var(--teal) !important;
+          outline-offset: 2px;
+      }
+
+      [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+          background-color: var(--teal);
+      }
+
+      [data-testid="stButton"] > button {
+          min-height: 2.9rem;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          color: var(--text-primary) !important;
+          font-weight: 600;
+          transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+      }
+
+      [data-testid="stButton"] > button:hover {
+          background: var(--surface-raised);
+          border-color: var(--teal);
+          color: var(--text-primary) !important;
+          transform: translateY(-1px);
+      }
+
+      [data-testid="stSidebar"] [data-testid="stButton"] > button[kind="primary"] {
+          background: var(--danger);
+          border-color: var(--danger);
+          color: #FFFFFF !important;
+      }
+
+      [data-testid="stSidebar"] [data-testid="stButton"] > button[kind="primary"]:hover {
+          background: #E11D48;
+          border-color: #E11D48;
+      }
+
       .hero-banner {
-          background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%);
-          border: 1px solid rgba(16, 185, 129, 0.3);
+          background: linear-gradient(135deg, #123B43 0%, #142D48 100%);
+          border: 1px solid rgba(45, 212, 191, 0.48);
           border-radius: 16px;
           padding: 1.5rem 1.8rem;
           margin-bottom: 2rem;
@@ -71,151 +148,181 @@ st.markdown(
           align-items: center;
           gap: 6px;
           padding: 4px 12px;
+          border: 1px solid rgba(45, 212, 191, 0.55);
           border-radius: 999px;
-          background: rgba(16, 185, 129, 0.2);
-          border: 1px solid rgba(16, 185, 129, 0.4);
-          color: #34d399 !important;
+          background: rgba(45, 212, 191, 0.14);
+          color: var(--teal) !important;
           font-size: 0.82rem;
-          font-weight: 600;
+          font-weight: 700;
           margin-bottom: 0.8rem;
       }
 
       .brand-title {
-          font-size: 2.2rem;
-          font-weight: 800;
-          background: linear-gradient(135deg, #34d399 0%, #38bdf8 100%);
+          margin: 0;
+          background: linear-gradient(135deg, #5EEAD4 0%, #67E8F9 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
-          margin: 0;
+          font-size: 2.2rem;
+          font-weight: 800;
           line-height: 1.2;
       }
 
       .brand-subtitle {
-          color: #94a3b8;
+          color: var(--text-secondary);
           font-size: 1.05rem;
-          margin-top: 0.4rem;
-          margin-bottom: 0;
+          margin: 0.4rem 0 0;
       }
 
-      /* Quick Suggestion Chips */
-      .quick-chip-btn {
-          background: rgba(30, 41, 59, 0.7);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+      [data-testid="stChatInput"] {
+          background: var(--surface-raised);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+      }
+
+      [data-testid="stChatInput"] > div {
+          background: var(--surface-raised) !important;
+          border-radius: 14px;
+      }
+
+      [data-testid="stChatInput"]:focus-within {
+          border-color: var(--teal);
+          box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.16);
+      }
+
+      [data-testid="stChatInput"] textarea {
+          color: var(--text-primary) !important;
+      }
+
+      [data-testid="stChatInput"] textarea::placeholder {
+          color: var(--text-secondary) !important;
+          opacity: 0.9;
+      }
+
+      [data-testid="stChatInput"] button {
+          background: var(--teal);
+          color: #06201F !important;
+      }
+
+      [data-testid="stChatMessage"] {
+          margin: 0.65rem 0;
+          padding: 0.8rem 1rem;
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          background: var(--surface-raised);
+      }
+
+      [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) {
+          background: var(--teal-deep);
+          border-color: #159A8A;
+      }
+
+      [data-testid="stChatMessage"] :is(p, li, h1, h2, h3, h4, blockquote, strong) {
+          color: var(--text-primary) !important;
+      }
+
+      [data-testid="stChatMessage"] a,
+      [data-testid="stExpander"] a {
+          color: var(--teal) !important;
+          text-decoration: underline;
+          text-underline-offset: 2px;
+      }
+
+      [data-testid="stChatMessage"] code {
+          background: #0A1424;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: #BAE6FD;
+          padding: 0.1rem 0.3rem;
+      }
+
+      [data-testid="stExpander"] {
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--surface);
+      }
+
+      [data-testid="stExpander"] summary,
+      [data-testid="stExpander"] summary span,
+      [data-testid="stExpander"] [data-testid="stMarkdownContainer"] {
+          color: var(--text-primary) !important;
+      }
+
+      [data-testid="stExpander"] details > div {
+          background: var(--surface);
+      }
+
+      .metric-card,
+      .source-card {
+          background: var(--surface);
+          border: 1px solid var(--border);
           border-radius: 12px;
-          padding: 1rem;
-          color: #f1f5f9;
-          font-size: 0.95rem;
-          transition: all 0.3s ease;
-          cursor: pointer;
       }
 
-      .quick-chip-btn:hover {
-          border-color: #34d399;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px -6px rgba(52, 211, 153, 0.3);
-      }
-
-      /* Metric Cards */
       .metric-card {
-          background: rgba(30, 41, 59, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 12px;
           padding: 0.9rem;
           text-align: center;
       }
 
       .metric-val {
+          color: #67E8F9;
           font-size: 1.4rem;
           font-weight: 700;
-          color: #38bdf8;
       }
 
       .metric-lbl {
+          color: var(--text-secondary);
           font-size: 0.78rem;
-          color: #94a3b8;
-          text-transform: uppercase;
           letter-spacing: 0.5px;
+          text-transform: uppercase;
       }
 
-      /* Source Drawer Card */
       .source-card {
-          background: rgba(30, 41, 59, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 10px;
-          padding: 1rem;
           margin-bottom: 0.75rem;
-      }
-
-      .source-badge-legal {
-          background: rgba(16, 185, 129, 0.2);
-          color: #34d399;
-          border: 1px solid rgba(16, 185, 129, 0.3);
-          padding: 2px 8px;
-          border-radius: 6px;
-          font-size: 0.75rem;
-          font-weight: 600;
-      }
-
-      .source-badge-news {
-          background: rgba(56, 189, 248, 0.2);
-          color: #38bdf8;
-          border: 1px solid rgba(56, 189, 248, 0.3);
-          padding: 2px 8px;
-          border-radius: 6px;
-          font-size: 0.75rem;
-          font-weight: 600;
-      }
-
-      .source-badge-pageindex {
-          background: rgba(245, 158, 11, 0.2);
-          color: #fbbf24;
-          border: 1px solid rgba(245, 158, 11, 0.3);
-          padding: 2px 8px;
-          border-radius: 6px;
-          font-size: 0.75rem;
-          font-weight: 600;
+          padding: 1rem;
       }
 
       .source-content {
-          color: #cbd5e1;
+          margin-top: 0.5rem;
+          padding: 0.6rem 0.8rem;
+          border-left: 3px solid #67E8F9;
+          border-radius: 8px;
+          background: #0A1424;
+          color: var(--text-secondary);
           font-size: 0.88rem;
           line-height: 1.5;
-          margin-top: 0.5rem;
-          background: rgba(15, 23, 42, 0.4);
-          padding: 0.6rem 0.8rem;
-          border-radius: 8px;
-          border-left: 3px solid #38bdf8;
       }
-      
-      /* Badges */
+
+      .source-badge-legal,
       .badge-hybrid {
-          background: rgba(16, 185, 129, 0.2);
-          color: #34d399;
-          border: 1px solid rgba(16, 185, 129, 0.3);
-          padding: 3px 10px;
-          border-radius: 999px;
-          font-size: 0.8rem;
-          font-weight: 600;
+          background: rgba(45, 212, 191, 0.14);
+          border: 1px solid rgba(45, 212, 191, 0.38);
+          color: var(--teal);
       }
 
-      .badge-pageindex {
-          background: rgba(245, 158, 11, 0.2);
-          color: #fbbf24;
-          border: 1px solid rgba(245, 158, 11, 0.3);
-          padding: 3px 10px;
-          border-radius: 999px;
-          font-size: 0.8rem;
-          font-weight: 600;
-      }
-
+      .source-badge-news,
       .badge-speed {
-          background: rgba(56, 189, 248, 0.2);
-          color: #38bdf8;
-          border: 1px solid rgba(56, 189, 248, 0.3);
+          background: rgba(103, 232, 249, 0.14);
+          border: 1px solid rgba(103, 232, 249, 0.38);
+          color: #67E8F9;
+      }
+
+      .source-badge-pageindex,
+      .badge-pageindex {
+          background: rgba(251, 191, 36, 0.14);
+          border: 1px solid rgba(251, 191, 36, 0.38);
+          color: var(--amber);
+      }
+
+      .source-badge-legal,
+      .source-badge-news,
+      .source-badge-pageindex,
+      .badge-hybrid,
+      .badge-pageindex,
+      .badge-speed {
           padding: 3px 10px;
           border-radius: 999px;
           font-size: 0.8rem;
-          font-weight: 600;
+          font-weight: 700;
       }
     </style>
     """,

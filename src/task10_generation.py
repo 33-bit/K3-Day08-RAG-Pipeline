@@ -39,6 +39,7 @@ TEMPERATURE = 0.3
 
 # TODO: Chọn LLM model (OpenRouter model ID)
 LLM_MODEL = "openai/gpt-4o-mini"  # hoặc model ":free" nếu chưa có credit
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 # =============================================================================
@@ -116,6 +117,29 @@ def format_context(chunks: list[dict]) -> str:
 # GENERATION
 # =============================================================================
 
+def _call_openrouter(context: str, query: str, api_key: str) -> str:
+    """Gọi OpenRouter qua OpenAI-compatible SDK và trả về nội dung câu trả lời."""
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
+    response = client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"Context:\n{context}\n\n---\n\nCâu hỏi: {query}",
+            },
+        ],
+        temperature=TEMPERATURE,
+        top_p=TOP_P,
+    )
+    answer = response.choices[0].message.content
+    if not answer or not answer.strip():
+        raise RuntimeError("OpenRouter returned an empty answer")
+    return answer.strip()
+
+
 def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
     """
     End-to-end RAG generation có citation.
@@ -151,11 +175,27 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
     if not chunks:
         return fallback
 
-    # The retrieval preparation is complete. The OpenRouter call is added only
-    # after Task 9 and a valid API key are available.
-    reorder_for_llm(chunks)
-    format_context(chunks)
-    return fallback
+    api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return fallback
+
+    context = format_context(reorder_for_llm(chunks))
+    try:
+        answer = _call_openrouter(context, query, api_key)
+    except Exception:
+        # Không để lỗi mạng/model làm hỏng UI; vẫn giữ nguồn retrieval để người
+        # dùng biết câu trả lời chưa được xác minh bởi LLM.
+        return {
+            **fallback,
+            "sources": chunks,
+            "retrieval_source": chunks[0].get("source", "hybrid"),
+        }
+
+    return {
+        "answer": answer,
+        "sources": chunks,
+        "retrieval_source": chunks[0].get("source", "hybrid"),
+    }
 
 
 if __name__ == "__main__":

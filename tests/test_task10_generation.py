@@ -39,3 +39,29 @@ def test_generation_returns_a_safe_contract_when_retrieval_is_unavailable(monkey
         "sources": [],
         "retrieval_source": "none",
     }
+
+
+def test_generation_returns_openrouter_answer_with_retrieval_sources(monkeypatch):
+    """Would fail if a successful OpenRouter response is discarded by the UI contract."""
+    monkeypatch.setattr(task10, "retrieve", lambda query, top_k: [CHUNKS[0]])
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(task10, "_call_openrouter", lambda context, query, api_key: "Câu trả lời có [doc-0.md].")
+
+    result = task10.generate_with_citation("Học phí là bao nhiêu?")
+
+    assert result == {
+        "answer": "Câu trả lời có [doc-0.md].",
+        "sources": [CHUNKS[0]],
+        "retrieval_source": "hybrid",
+    }
+
+
+def test_generation_returns_fallback_when_api_key_is_missing(monkeypatch):
+    """Would fail if missing credentials cause a crash during the live demo."""
+    monkeypatch.setattr(task10, "retrieve", lambda query, top_k: [CHUNKS[0]])
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    assert task10.generate_with_citation("Học phí là bao nhiêu?")["answer"] == (
+        "Tôi không thể xác minh thông tin này từ nguồn hiện có."
+    )
