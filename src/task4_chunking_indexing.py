@@ -75,7 +75,27 @@ def load_documents() -> list[dict]:
     #         "metadata": {"source": md_file.name, "type": doc_type}
     #     })
     # return documents
-    raise NotImplementedError("Implement load_documents")
+    documents = []
+    if not STANDARDIZED_DIR.exists():
+        return documents
+    for md_file in sorted(STANDARDIZED_DIR.rglob("*.md")):
+        content = md_file.read_text(encoding="utf-8").strip()
+        if not content:
+            continue
+        relative_path = md_file.relative_to(STANDARDIZED_DIR).as_posix()
+        doc_type = relative_path.split("/", 1)[0].lower()
+        if doc_type not in {"legal", "news"}:
+            doc_type = "news" if "news" in relative_path.lower() else "legal"
+        documents.append({
+            "content": content,
+            "metadata": {
+                "source": relative_path,
+                "file_name": md_file.name,
+                "doc_type": doc_type,
+                "type": doc_type,
+            },
+        })
+    return documents
 
 
 def chunk_documents(documents: list[dict]) -> list[dict]:
@@ -104,7 +124,40 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
     #             "metadata": {**doc["metadata"], "chunk_index": i}
     #         })
     # return chunks
-    raise NotImplementedError("Implement chunk_documents")
+    try:
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
+        split_text = splitter.split_text
+    except ImportError:
+        def split_text(text):
+            step = CHUNK_SIZE - CHUNK_OVERLAP
+            return [text[start:start + CHUNK_SIZE]
+                    for start in range(0, len(text), step)]
+
+    chunks = []
+    for doc in documents:
+        metadata = dict(doc.get("metadata", {}))
+        source = metadata.get("source", "unknown")
+        doc_type = metadata.get("doc_type", metadata.get("type", "unknown"))
+        for index, chunk_text in enumerate(split_text(doc.get("content", ""))):
+            chunk_text = chunk_text.strip()
+            if not chunk_text:
+                continue
+            chunks.append({
+                "content": chunk_text,
+                "metadata": {
+                    **metadata,
+                    "source": source,
+                    "doc_type": doc_type,
+                    "type": doc_type,
+                    "chunk_index": index,
+                },
+            })
+    return chunks
 
 
 def embed_chunks(chunks: list[dict]) -> list[dict]:
