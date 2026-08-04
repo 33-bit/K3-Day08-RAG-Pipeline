@@ -10,6 +10,11 @@ def normalise_response(response: dict) -> dict:
     }
 
 
+def format_score(score: float) -> str:
+    """Format retrieval scores consistently for display in the UI."""
+    return f"{float(score):.4f}"
+
+
 def build_demo_response(query: str) -> dict:
     """Provide a realistic response while the RAG pipeline is unavailable."""
     return {
