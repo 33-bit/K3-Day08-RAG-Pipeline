@@ -25,20 +25,32 @@ Logic:
     điểm số giữa hai nhóm rồi chọn ngưỡng nằm giữa.
 """
 
-from .task5_semantic_search import semantic_search
-from .task6_lexical_search import lexical_search
-from .task7_reranking import rerank, rerank_rrf
-from .task8_pageindex_vectorless import pageindex_search
+import sys
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+try:
+    from src.task5_semantic_search import semantic_search
+    from src.task6_lexical_search import lexical_search
+    from src.task7_reranking import rerank, rerank_rrf
+    from src.task8_pageindex_vectorless import pageindex_search
+except ImportError:
+    from .task5_semantic_search import semantic_search
+    from .task6_lexical_search import lexical_search
+    from .task7_reranking import rerank, rerank_rrf
+    from .task8_pageindex_vectorless import pageindex_search
+
 
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
-# TODO: Calibrate threshold này bằng cách tự đo điểm cosine của semantic_search
-# cho câu hỏi liên quan vs câu hỏi lạc đề (xem ghi chú ở trên) — ĐỪNG copy nguyên
-# giá trị mẫu, mỗi corpus/embedding model sẽ cho khoảng điểm khác nhau.
-SCORE_THRESHOLD = 0.3   # Nếu best score (cosine gốc) < threshold → fallback PageIndex
+SCORE_THRESHOLD = 0.48  # Nếu best_score (cosine gốc từ semantic search) < 0.48 → fallback PageIndex
+
 DEFAULT_TOP_K = 5
 RERANK_METHOD = "rrf"  # "cross_encoder" | "mmr" | "rrf"
 
@@ -77,36 +89,47 @@ def retrieve(
             'source': str  # 'hybrid' hoặc 'pageindex'
         }
     """
-    # TODO: Implement full retrieval pipeline
-    #
-    # Step 1: Song song chạy semantic + lexical
-    # dense_results = semantic_search(query, top_k=top_k * 2)
-    # sparse_results = lexical_search(query, top_k=top_k * 2)
-    #
+    if not query or not query.strip():
+        return []
+
+    # Step 1: Song song / tuần tự chạy semantic + lexical
+    dense_results = semantic_search(query, top_k=top_k * 2)
+    sparse_results = lexical_search(query, top_k=top_k * 2)
+
     # Step 2: Merge bằng RRF
-    # merged = rerank_rrf([dense_results, sparse_results], top_k=top_k * 2)
-    # for item in merged:
-    #     item["source"] = "hybrid"
-    #
+    merged = rerank_rrf([dense_results, sparse_results], top_k=top_k * 2)
+    for item in merged:
+        item["source"] = "hybrid"
+
     # Step 3: Rerank
-    # if use_reranking and merged:
-    #     final_results = rerank(query, merged, top_k=top_k, method=RERANK_METHOD)
-    # else:
-    #     final_results = merged[:top_k]
-    #
+    if use_reranking and merged:
+        final_results = rerank(query, merged, top_k=top_k, method=RERANK_METHOD)
+    else:
+        final_results = merged[:top_k]
+
+    for item in final_results:
+        item.setdefault("source", "hybrid")
+
     # Step 4: Check threshold DÙNG ĐIỂM COSINE GỐC (dense_results), KHÔNG PHẢI RRF
-    # best_score = dense_results[0]["score"] if dense_results else 0.0
-    # if best_score < score_threshold:
-    #     print(f"  ⚠ Semantic best score ({best_score:.3f}) < threshold ({score_threshold})")
-    #     fallback = pageindex_search(query, top_k=top_k)
-    #     if fallback:
-    #         return fallback
-    #
-    # return final_results[:top_k]
-    raise NotImplementedError("Implement retrieve")
+    best_score = dense_results[0]["score"] if dense_results else 0.0
+    if best_score < score_threshold or not final_results:
+        try:
+            fallback = pageindex_search(query, top_k=top_k)
+            if fallback:
+                for item in fallback:
+                    item["source"] = "pageindex"
+                return fallback[:top_k]
+        except Exception:
+            pass
+
+    return final_results[:top_k]
 
 
 if __name__ == "__main__":
+    import sys
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     test_queries = [
         "What is the tuition fee at RMIT Vietnam?",
         "How do I book a library study room?",
@@ -120,3 +143,4 @@ if __name__ == "__main__":
         results = retrieve(q, top_k=3)
         for i, r in enumerate(results, 1):
             print(f"  {i}. [{r['score']:.3f}] [{r['source']}] {r['content'][:80]}...")
+

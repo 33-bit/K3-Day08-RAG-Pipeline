@@ -1,1 +1,4 @@
-invalid type: string "type=\"application/rss+xml\">\n<link rel=\"alternate\" href=\"https://www.hust.edu.vn/vi/dao-tao/rss/thac-si/\" title=\"Đào tạo - Thạc sĩ\" type=\"application/rss+xml\">\n<link rel=\"alternate\" href=\"https://www.hust.edu.vn/vi/dao-tao/rss/tien-si/\" title=\"Đào tạo - Tiến sĩ\" type=\"application/rss+xml\">\n<link rel=\"alternate\" href=\".html\">\n<link rel=\"
+type="application/rss+xml">
+<link rel="alternate" href="https://www.hust.edu.vn/vi/dao-tao/rss/thac-si/" title="Đào tạo - Thạc sĩ" type="application/rss+xml">
+<link rel="alternate" href="https://www.hust.edu.vn/vi/dao-tao/rss/tien-si/" title="Đào tạo - Tiến sĩ" type="application/rss+xml">
+<link rel="alternate" href="https://www.hust.edu.vn/vi/dao-tao/rss/vua-lam-vua-hoc/" title="l=\"
