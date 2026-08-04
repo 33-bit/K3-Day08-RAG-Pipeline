@@ -81,25 +81,24 @@ Xem code mẫu (DeepEval/RAGAS/TruLens) chi tiết trong `README.md` gốc mục
 
 | Thành viên           | MSSV        | Nhiệm vụ              | Trạng thái |
 | ---------------------- | ----------- | ----------------------- | ------------ |
-| Nguyễn Quang Huy      | 2A202601954 | Team Leader & Architect |              |
-| Trần Nguyễn Anh Minh | 2A202601475 | Data Scraper Dev        |              |
-| Nguyễn Hữu Hiếu     | 2A202601429 | Vector Search Dev       |              |
-| Hoàng Danh Thái      | 2A202601527 | Sparse Search Dev       |              |
-| Trần Quang Trọng     | 2A202601461 | Frontend UI Dev         |              |
-| Nguyễn Hữu Thắng    | 2A202601435 | Benchmark QA Dev        |              |
+| Nguyễn Quang Huy      | 2A202601954 | Team Leader & Architect | ✅ Hoàn thành |
+| Trần Nguyễn Anh Minh | 2A202601475 | Data Scraper Dev        | ✅ Hoàn thành |
+| Nguyễn Hữu Hiếu     | 2A202601429 | Vector Search Dev       | ✅ Hoàn thành |
+| Hoàng Danh Thái      | 2A202601527 | Sparse Search Dev       | ✅ Hoàn thành |
+| Trần Quang Trọng     | 2A202601461 | Frontend UI Dev         | ✅ Hoàn thành |
+| Nguyễn Hữu Thắng    | 2A202601435 | Benchmark QA Dev        | ✅ Hoàn thành |
 
 ---
 
 ## Hướng Dẫn Chạy
 
 ```bash
-# Cài đặt dependencies
-pip install -r requirements.txt
-
-# Chạy app
-streamlit run app.py
-# hoặc
-chainlit run app.py
+git clone https://github.com/33-bit/K3-Day08-RAG-Pipeline.git
+cd K3-Day08-RAG-Pipeline
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m streamlit run app.py
 ```
 
 ---
