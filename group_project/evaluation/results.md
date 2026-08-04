@@ -1,4 +1,4 @@
-# RAG Evaluation Results
+# RAGAS Evaluation Results
 
 Framework used: **RAGAS**
 
