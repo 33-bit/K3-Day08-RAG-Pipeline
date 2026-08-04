@@ -23,6 +23,7 @@ có field "deprecation" cảnh báo) và trả kết quả trong "retrieved_node
 """
 
 import os
+import textwrap
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -30,6 +31,44 @@ load_dotenv()
 
 PAGEINDEX_API_KEY = os.getenv("PAGEINDEX_API_KEY", "")
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
+PAGEINDEX_DIR = Path(__file__).parent.parent / "data" / "pageindex"
+
+
+def markdown_to_pdf(markdown_path: Path, output_path: Path | None = None) -> Path:
+    """Create a PageIndex-uploadable PDF from one standardized Markdown file.
+
+    The bundled fpdf2 core font is Latin-1 only, so unsupported Unicode characters
+    are removed deliberately. The original Markdown remains the lossless source.
+    """
+    from fpdf import FPDF
+
+    markdown_path = Path(markdown_path)
+    output_path = output_path or PAGEINDEX_DIR / f"{markdown_path.stem}.pdf"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    safe_text = markdown_path.read_text(encoding="utf-8").encode(
+        "latin-1", errors="ignore"
+    ).decode("latin-1")
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=10)
+    for line in safe_text.splitlines():
+        line = line.lstrip("# ").strip()
+        if not line:
+            pdf.ln(4)
+            continue
+        for wrapped_line in textwrap.wrap(
+            line, width=95, break_long_words=True, break_on_hyphens=False
+        ) or [""]:
+            pdf.multi_cell(180, 5, wrapped_line, new_x="LMARGIN", new_y="NEXT")
+    pdf.output(str(output_path))
+    return output_path
+
+
+def prepare_pageindex_pdfs() -> list[Path]:
+    """Convert all standardized Markdown documents without uploading them."""
+    return [markdown_to_pdf(path) for path in sorted(STANDARDIZED_DIR.rglob("*.md"))]
 
 
 def upload_documents():

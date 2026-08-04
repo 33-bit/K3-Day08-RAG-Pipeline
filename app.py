@@ -6,7 +6,7 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.ui_helpers import resolve_response
+from src.ui_helpers import normalise_source_metadata, resolve_response
 
 load_dotenv()
 
@@ -57,9 +57,9 @@ def source_panel(sources: list[dict]) -> None:
 
     with st.expander(f"📚 Nguồn tham khảo ({len(sources)})"):
         for index, source in enumerate(sources, start=1):
-            metadata = source.get("metadata", {})
+            metadata = normalise_source_metadata(source.get("metadata", {}), f"document-{index}")
             name = metadata.get("source", f"Tài liệu {index}")
-            document_type = metadata.get("type", "tài liệu")
+            document_type = metadata.get("doc_type", "tài liệu")
             score = source.get("score")
             score_text = f" · score {score:.3f}" if isinstance(score, (int, float)) else ""
             excerpt = source.get("content", "Không có đoạn trích.")
