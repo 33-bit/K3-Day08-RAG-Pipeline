@@ -119,4 +119,4 @@ if __name__ == "__main__":
 
         print("\nHyDE Search:")
         for r in hyde_search(q, top_k=3):
-            print(f"[{r['score']:.4f}] {r['metadata']} | {r['content'][:150]}...")
+            print(f"[{r['score']:.4f}] {r['metadata']} | {r['content'][:150]}...")

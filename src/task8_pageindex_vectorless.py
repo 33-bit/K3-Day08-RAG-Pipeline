@@ -22,6 +22,8 @@ có field "deprecation" cảnh báo) và trả kết quả trong "retrieved_node
 (json.dumps(...)) trước khi viết logic parse, đừng đoán schema từ ví dụ code cũ.
 """
 
+import json
+import time
 import os
 import textwrap
 from pathlib import Path
@@ -33,7 +35,7 @@ PAGEINDEX_API_KEY = os.getenv("PAGEINDEX_API_KEY", "")
 PAGEINDEX_DOC_ID = os.getenv("PAGEINDEX_DOC_ID", "")
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
 PAGEINDEX_DIR = Path(__file__).parent.parent / "data" / "pageindex"
-
+DOC_IDS_PATH = PAGEINDEX_DIR / "doc_ids.json"
 
 def markdown_to_pdf(markdown_path: Path, output_path: Path | None = None) -> Path:
     """Create a PageIndex-uploadable PDF from one standardized Markdown file.
@@ -73,143 +75,124 @@ def prepare_pageindex_pdfs() -> list[Path]:
 
 
 def upload_documents():
-    """
-    Upload toàn bộ markdown documents lên PageIndex.
-    """
-    # TODO: Implement upload
-    #
-    # Tham khảo: https://github.com/VectifyAI/PageIndex
-    #
-    # from pageindex.client import PageIndexClient
-    #
-    # client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
-    #
-    # for md_file in STANDARDIZED_DIR.rglob("*.md"):
-    #     # Lưu ý: PageIndex nhận PDF, không nhận .md trực tiếp — có thể cần
-    #     # convert markdown sang PDF đơn giản bằng fpdf2 trước khi upload.
-    #     resp = client.submit_document(str(pdf_path))
-    #     doc_id = resp.get("doc_id") or resp.get("id")
-    #     print(f"  ✓ Uploaded: {md_file.name} -> {doc_id}")
-    raise NotImplementedError("Implement upload_documents")
+    if not PAGEINDEX_API_KEY:
+        raise RuntimeError("Missing PAGEINDEX_API_KEY in .env")
 
+    from pageindex.client import PageIndexClient
 
-def fetch_pageindex_retrieval(query: str) -> dict:
-    """Fetch the raw Cloud response.
+    client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
+    pdf_paths = prepare_pageindex_pdfs()
 
-    This is the only function that needs replacing when Cloud credentials and
-    the final PageIndex SDK/API contract are available.
-    """
-    if not PAGEINDEX_API_KEY or not PAGEINDEX_DOC_ID:
-        return {}
+    uploaded = []
 
-    raise NotImplementedError(
-        "Configure the PageIndex Cloud SDK call after confirming its live response schema."
+    for pdf_path in pdf_paths:
+        print(f"Uploading: {pdf_path.name}")
+        resp = client.submit_document(str(pdf_path))
+
+        doc_id = resp.get("doc_id") or resp.get("id") or resp.get("document_id")
+        if not doc_id:
+            raise RuntimeError(f"Cannot find doc_id in response: {resp}")
+
+        uploaded.append({"name": pdf_path.name, "doc_id": doc_id})
+        print(f"Uploaded: {pdf_path.name} -> {doc_id}")
+
+    DOC_IDS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DOC_IDS_PATH.write_text(
+        json.dumps(uploaded, ensure_ascii=False, indent=2),
+        encoding="utf-8",
     )
 
+    return uploaded
 
-def parse_pageindex_retrieval(retrieval: dict, top_k: int) -> list[dict]:
-    """Flatten PageIndex nodes into the retrieval format used across the RAG app."""
-    if top_k <= 0:
-        return []
+def _load_uploaded_documents():
+    if DOC_IDS_PATH.exists():
+        return json.loads(DOC_IDS_PATH.read_text(encoding="utf-8"))
+    return upload_documents()
 
-    results = []
-    for node in retrieval.get("retrieved_nodes", []):
-        node_id = node.get("node_id", "")
-        for group in node.get("relevant_contents", []):
-            if not isinstance(group, list):
-                continue
-            for item in group:
-                content = str(item.get("relevant_content", "")).strip()
-                if not content:
-                    continue
 
-                rank = len(results) + 1
-                results.append(
-                    {
-                        "content": content,
-                        "score": round(1.0 / rank, 6),
-                        "metadata": {
-                            "section": item.get("section_title", ""),
-                            "node_id": node_id,
-                        },
-                        "source": "pageindex",
-                    }
-                )
-                if len(results) == top_k:
-                    return results
-    return results
+def _wait_for_retrieval(client, retrieval_id: str, max_wait_seconds: int = 90):
+    start = time.time()
+
+    while time.time() - start < max_wait_seconds:
+        retrieval = client.get_retrieval(retrieval_id)
+
+        status = str(retrieval.get("status", "")).lower()
+        if retrieval.get("retrieved_nodes"):
+            return retrieval
+
+        if status in {"completed", "complete", "succeeded", "success"}:
+            return retrieval
+
+        if status in {"failed", "error"}:
+            raise RuntimeError(f"PageIndex retrieval failed: {retrieval}")
+
+        time.sleep(3)
+
+    raise TimeoutError(f"PageIndex retrieval timeout: {retrieval_id}")
 
 
 def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
-    """
-    Vectorless retrieval sử dụng PageIndex (hoặc local document structure fallback khi thiếu API key).
-    Dùng làm fallback khi hybrid search không có kết quả tốt.
-
-    Args:
-        query: Câu truy vấn
-        top_k: Số lượng kết quả tối đa
-
-    Returns:
-        List of {
-            'content': str,
-            'score': float,
-            'metadata': dict,
-            'source': 'pageindex'   # Đánh dấu nguồn retrieval
-        }
-    """
     if not query or not query.strip():
         return []
 
-    # Attempt PageIndex Cloud API first if configured
-    try:
-        retrieval = fetch_pageindex_retrieval(query)
-        parsed = parse_pageindex_retrieval(retrieval, top_k)
-        if parsed:
-            return parsed
-    except (NotImplementedError, Exception):
-        pass
+    if not PAGEINDEX_API_KEY:
+        raise RuntimeError("Missing PAGEINDEX_API_KEY in .env")
 
-    # Fallback to local structural document search (searching header sections)
+    from pageindex.client import PageIndexClient
+
+    client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
+    documents = _load_uploaded_documents()
+
     results = []
-    try:
-        if STANDARDIZED_DIR.exists():
-            query_words = [w.lower() for w in query.split() if len(w) > 1]
-            for md_file in sorted(STANDARDIZED_DIR.rglob("*.md")):
-                content = md_file.read_text(encoding="utf-8")
-                lines = content.splitlines()
-                current_section = md_file.stem
-                section_text = []
+    rank = 1
 
-                def process_block(block_lines, sec_name):
-                    text_block = "\n".join(block_lines).strip()
-                    if len(text_block) > 30:
-                        matches = sum(1 for w in query_words if w in text_block.lower())
-                        score = round(min(0.90, 0.4 + matches * 0.1), 4)
-                        results.append({
-                            "content": text_block[:500],
-                            "score": score,
-                            "metadata": {"source": md_file.name, "section": sec_name},
-                            "source": "pageindex",
-                        })
+    for doc in documents:
+        resp = client.submit_query(doc_id=doc["doc_id"], query=query)
+        retrieval_id = resp.get("retrieval_id") or resp.get("id")
 
-                for line in lines:
-                    if line.startswith("#"):
-                        if section_text:
-                            process_block(section_text, current_section)
-                            section_text = []
-                        current_section = line.lstrip("# ").strip()
-                    else:
-                        section_text.append(line)
+        if not retrieval_id:
+            continue
 
-                if section_text:
-                    process_block(section_text, current_section)
-    except Exception as e:
-        print(f"Local structural fallback error: {e}")
+        retrieval = _wait_for_retrieval(client, retrieval_id)
+
+        for node in retrieval.get("retrieved_nodes", []):
+            for group in node.get("relevant_contents", []):
+                if isinstance(group, dict):
+                    group = [group]
+
+                for item in group:
+                    content = item.get("relevant_content", "") if isinstance(item, dict) else str(item)
+
+                    if not content.strip():
+                        continue
+
+                    results.append({
+                        "content": content.strip(),
+                        "score": round(1.0 / rank, 4),
+                        "metadata": {
+                            "doc_id": doc["doc_id"],
+                            "document": doc["name"],
+                            "rank": rank,
+                        },
+                        "source": "pageindex",
+                    })
+
+                    rank += 1
+
+                    if len(results) >= top_k:
+                        break
+
+                if len(results) >= top_k:
+                    break
+
+            if len(results) >= top_k:
+                break
+
+        if len(results) >= top_k:
+            break
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_k]
-
-
 
 if __name__ == "__main__":
     if not PAGEINDEX_API_KEY:
