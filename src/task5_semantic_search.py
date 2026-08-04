@@ -1,6 +1,6 @@
-"""
-Task 5 - Semantic Search & HyDE Search.
-"""
+import os
+os.environ["TQDM_DISABLE"] = "1"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from functools import lru_cache
 from pathlib import Path
@@ -9,11 +9,12 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 
 
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 CHROMA_DIR = PROJECT_DIR / "chroma_db"
 
 COLLECTION_NAME = "university_services_docs"
-EMBEDDING_MODEL = "BAAI/bge-m3"
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 
 @lru_cache(maxsize=1)
@@ -47,17 +48,12 @@ def semantic_search(query: str, top_k: int = 10) -> list[dict]:
         query_vector = model.encode(query).tolist()
 
         collection = get_collection()
-        count = collection.count()
-        if count == 0:
-            return []
-
-        n_results = min(top_k, count)
-
         results = collection.query(
             query_embeddings=[query_vector],
-            n_results=n_results,
+            n_results=top_k,
             include=["documents", "metadatas", "distances"],
         )
+
 
         output = []
 
@@ -103,6 +99,10 @@ def hyde_search(query: str, top_k: int = 10) -> list[dict]:
 
 
 if __name__ == "__main__":
+    import sys
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     queries = [
         "What is the tuition fee payment policy?",
         "How can students apply for scholarships?",
@@ -119,4 +119,4 @@ if __name__ == "__main__":
 
         print("\nHyDE Search:")
         for r in hyde_search(q, top_k=3):
-            print(f"[{r['score']:.4f}] {r['metadata']} | {r['content'][:150]}...")
+            print(f"[{r['score']:.4f}] {r['metadata']} | {r['content'][:150]}...")
