@@ -11,12 +11,14 @@ Sau khi hoàn thành bài cá nhân, nhóm ngồi lại để xây dựng **1 tr
 Xây dựng chatbot trả lời câu hỏi về dịch vụ và chính sách đại học liên quan.
 
 **Yêu cầu:**
+
 - Giao diện chat (Streamlit / Gradio / Chainlit)
 - Trả lời có citation (dựa trên Task 10)
 - Hỗ trợ follow-up questions (conversation memory)
 - Hiển thị source documents đã dùng
 
 **Stack gợi ý:**
+
 ```
 Chainlit/Streamlit → Retrieval (Task 9) → Generation (Task 10) → Display
 ```
@@ -29,11 +31,11 @@ Sử dụng **1 trong 3 framework** sau để evaluate pipeline RAG của nhóm:
 
 ### Framework lựa chọn
 
-| Framework | Cài đặt | Đặc điểm |
-|-----------|---------|-----------|
+| Framework                                           | Cài đặt               | Đặc điểm                                      |
+| --------------------------------------------------- | ------------------------ | ------------------------------------------------- |
 | [DeepEval](https://github.com/confident-ai/deepeval) | `pip install deepeval` | Nhiều metric built-in, dễ integrate với pytest |
-| [RAGAS](https://github.com/explodinggradients/ragas) | `pip install ragas` | Chuẩn industry cho RAG eval, 3 trục chính |
-| [TruLens](https://github.com/truera/trulens) | `pip install trulens` | Dashboard UI, feedback functions mạnh |
+| [RAGAS](https://github.com/explodinggradients/ragas) | `pip install ragas`    | Chuẩn industry cho RAG eval, 3 trục chính      |
+| [TruLens](https://github.com/truera/trulens)         | `pip install trulens`  | Dashboard UI, feedback functions mạnh            |
 
 ### Yêu cầu Evaluation
 
@@ -77,12 +79,14 @@ Xem code mẫu (DeepEval/RAGAS/TruLens) chi tiết trong `README.md` gốc mục
 
 ## Phân Công Công Việc
 
-| Thành viên | MSSV | Nhiệm vụ | Trạng thái |
-|-----------|------|----------|------------|
-| | | | |
-| | | | |
-| | | | |
-| | | | |
+| Thành viên           | MSSV        | Nhiệm vụ              | Trạng thái |
+| ---------------------- | ----------- | ----------------------- | ------------ |
+| Nguyễn Quang Huy      | 2A202601954 | Team Leader & Architect |              |
+| Trần Nguyễn Anh Minh | 2A202601475 | Data Scraper Dev        |              |
+| Nguyễn Hữu Hiếu     | 2A202601429 | Vector Search Dev       |              |
+| Hoàng Danh Thái      | 2A202601527 | Sparse Search Dev       |              |
+| Trần Quang Trọng     | 2A202601461 | Frontend UI Dev         |              |
+| Nguyễn Hữu Thắng    | 2A202601435 | Benchmark QA Dev        |              |
 
 ---
 
