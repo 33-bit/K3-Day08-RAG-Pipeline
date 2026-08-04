@@ -15,6 +15,14 @@ def format_score(score: float) -> str:
     return f"{float(score):.4f}"
 
 
+def normalise_source_metadata(metadata: dict, fallback_source: str = "unknown") -> dict:
+    """Return UI-safe source metadata using the CP2 ``doc_type`` contract."""
+    metadata = dict(metadata or {})
+    source = metadata.get("source") or fallback_source
+    doc_type = metadata.get("doc_type") or metadata.get("type") or "unknown"
+    return {**metadata, "source": source, "doc_type": doc_type, "type": doc_type}
+
+
 def build_demo_response(query: str) -> dict:
     """Provide a realistic response while the RAG pipeline is unavailable."""
     return {
