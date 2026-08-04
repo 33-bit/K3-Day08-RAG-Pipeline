@@ -25,3 +25,7 @@ pageindex_pdfs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Custom workspace folder (do not push to git)
+my_workspace/
+
